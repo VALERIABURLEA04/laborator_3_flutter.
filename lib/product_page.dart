@@ -1,24 +1,76 @@
 import 'package:flutter/material.dart';
+import 'data/json_loader.dart';
 
-class ProductPage extends StatelessWidget {
+class ProductPage extends StatefulWidget {
   const ProductPage({super.key});
 
   @override
+  State<ProductPage> createState() => _ProductPageState();
+}
+
+class _ProductPageState extends State<ProductPage> {
+  bool? isFavorite;
+  String? selectedColor;
+  String? selectedSize;
+
+  late final Future<Map<String, dynamic>> productFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    productFuture = loadProduct();
+  }
+
+  Future<Map<String, dynamic>> loadProduct() async {
+    final jsonData = await JsonLoader.loadStoreData();
+
+    return Map<String, dynamic>.from(
+      jsonData['productPage']['product'],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
+return FutureBuilder<Map<String, dynamic>>(
+  future: productFuture,
+builder: (context, snapshot) {
+if (!snapshot.hasData) {
+return const Scaffold(
+body: Center(
+child: CircularProgressIndicator(),
+),
+);
+}
+
+final product = snapshot.data!;
+
+return Scaffold(
       backgroundColor: Colors.white,
 
       // Butonul ramine  jos
       bottomNavigationBar: SafeArea(
         top: false,
-        child: Container(
-          height: 70,
+        child: GestureDetector(
+          onTap: product['actions']['canAddToCart'] == true
+              ? () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Added to cart! Color: ${selectedColor ?? product['selectedColor']}, '
+                      'Size: ${selectedSize ?? product['selectedSize']}',
+                ),
+              ),
+            );
+          }
+              : null,
+          child: Container(
+            height: 70,
           margin: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: const Color(0xFF333333),
             borderRadius: BorderRadius.circular(18),
           ),
-          child: const Row(
+          child:  Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
@@ -28,8 +80,8 @@ class ProductPage extends StatelessWidget {
               ),
               SizedBox(width: 12),
               Text(
-                'Add To Cart',
-                style: TextStyle(
+                product['actions']['addToCartLabel'] as String,
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -37,8 +89,11 @@ class ProductPage extends StatelessWidget {
               ),
             ],
           ),
+          ),
         ),
       ),
+
+
 
       body: SafeArea(
         bottom: false,
@@ -54,9 +109,15 @@ class ProductPage extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     height: 410,
-                    child: Image.asset(
-                      'assets/images/main_product.png',
+                    child: Image.network(
+                      product['mainImageUrl'] as String,
                       fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Image.asset(
+                          'assets/images/main_product.png',
+                          fit: BoxFit.cover,
+                        );
+                      },
                     ),
                   ),
 
@@ -77,14 +138,22 @@ class ProductPage extends StatelessWidget {
                     top: 18,
                     right: 18,
                     child: _CircleButton(
-                      icon: Icons.favorite,
-                      iconColor: const Color(0xFFFF6B6B),
-                      onPressed: () {},
+                      icon: (isFavorite ?? (product['actions']['isFavorite'] == true))
+                          ? Icons.favorite
+                          : Icons.favorite_border,
+                      iconColor: (isFavorite ?? (product['actions']['isFavorite'] == true))
+                          ? const Color(0xFFFF6B6B)
+                          : Colors.grey,
+                      onPressed: () {
+                        setState(() {
+                          isFavorite = !(isFavorite ??
+                              (product['actions']['isFavorite'] == true));
+                        });
+                      },
                     ),
                   ),
                 ],
               ),
-
 
               // INFORMAȚII PRODUS
               Container(
@@ -102,18 +171,18 @@ class ProductPage extends StatelessWidget {
                   children: [
 
                     // Nume + preț
-                    const Row(
+                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Sportwear Set',
+                          product['name'] as String,
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         Text(
-                          '\$ 80.00',
+                          '\$ ${(product['price'] as num).toStringAsFixed(2)}',
                           style: TextStyle(
                             fontSize: 21,
                             fontWeight: FontWeight.bold,
@@ -136,9 +205,9 @@ class ProductPage extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 5),
-                        const Text(
-                          '(83)',
-                          style: TextStyle(
+                        Text(
+                          '(${product['ratingCount']})',
+                          style: const TextStyle(
                             fontSize: 10,
                             color: Colors.grey,
                           ),
@@ -180,48 +249,64 @@ class ProductPage extends StatelessWidget {
 
                     Row(
                       children: [
+
                         // Culori
-                        const Expanded(
+                        Expanded(
                           child: Row(
-                            children: [
-                              _ColorCircle(
-                                color: Color(0xFFEBC7AC),
-                              ),
-                              SizedBox(width: 12),
-                              _ColorCircle(
-                                color: Colors.black,
-                              ),
-                              SizedBox(width: 12),
-                              _ColorCircle(
-                                color: Color(0xFFF26363),
-                              ),
-                            ],
+                            children: (product['availableColors'] as List).map((color) {
+                              final colorValue = color['value'] as String;
+
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 12),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      selectedColor = color['id'] as String;
+                                    });
+                                  },
+                                  child: _ColorCircle(
+                                    color: Color(
+                                      int.parse(colorValue.replaceFirst('#', '0xFF')),
+                                    ),
+                                    selected: color['id'] ==
+                                        (selectedColor ?? product['selectedColor']),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
                           ),
                         ),
 
                         // Mărimi
+                        // Mărimi
                         Expanded(
                           child: Row(
-                            children: [
-                              const _SizeCircle(
-                                text: 'S',
-                              ),
-                              const SizedBox(width: 10),
-                              const _SizeCircle(
-                                text: 'M',
-                              ),
-                              const SizedBox(width: 10),
-                              _SizeCircle(
-                                text: 'L',
-                                selected: true,
-                              ),
-                            ],
+                            children: (product['availableSizes'] as List).map((size) {
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: GestureDetector(
+                                  onTap: product['sizeAvailability'][size] == true
+                                      ? () {
+                                    setState(() {
+                                      selectedSize = size as String;
+                                    });
+                                  }
+                                      : null,
+                                  child: _SizeCircle(
+                                    text: size as String,
+                                    selected: size == (selectedSize ?? product['selectedSize']),
+                                    available: product['sizeAvailability'][size] == true,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
                           ),
                         ),
                       ],
                     ),
 
                     const SizedBox(height: 24),
+
                     const Divider(),
 
                     // =========================
@@ -233,12 +318,9 @@ class ProductPage extends StatelessWidget {
 
                     const SizedBox(height: 12),
 
-                    const Text(
-                      'Sportswear is no longer under culture, it is no '
-                          'longer indie or cobbled together as it once was. '
-                          'Sport is fashion today. The top is oversized in fit '
-                          'and style, may need to size down.',
-                      style: TextStyle(
+                    Text(
+                      product['description'] as String,
+                      style: const TextStyle(
                         fontSize: 12,
                         height: 1.6,
                         color: Colors.grey,
@@ -274,9 +356,9 @@ class ProductPage extends StatelessWidget {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          '4.9',
-                          style: TextStyle(
+                        Text(
+                          '${product['rating']}',
+                          style: const TextStyle(
                             fontSize: 40,
                             fontWeight: FontWeight.bold,
                           ),
@@ -311,9 +393,9 @@ class ProductPage extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            const Text(
-                              '83 ratings',
-                              style: TextStyle(
+                            Text(
+                              '${product['ratingCount']} ratings',
+                              style: const TextStyle(
                                 color: Colors.grey,
                                 fontSize: 10,
                               ),
@@ -325,44 +407,29 @@ class ProductPage extends StatelessWidget {
 
                     const SizedBox(height: 20),
 
-                    const _RatingBar(
-                      number: '5',
-                      value: 0.80,
-                      percent: '80%',
-                    ),
-                    const _RatingBar(
-                      number: '4',
-                      value: 0.12,
-                      percent: '12%',
-                    ),
-                    const _RatingBar(
-                      number: '3',
-                      value: 0.05,
-                      percent: '5%',
-                    ),
-                    const _RatingBar(
-                      number: '2',
-                      value: 0.03,
-                      percent: '3%',
-                    ),
-                    const _RatingBar(
-                      number: '1',
-                      value: 0,
-                      percent: '0%',
-                    ),
+                    //rating
+                    ...(product['ratingBreakdown'] as List).map((rating) {
+                      final percentage = rating['percentage'] as num;
 
+                      return _RatingBar(
+                        number: '${rating['stars']}',
+                        value: percentage / 100,
+                        percent: '${percentage}%',
+                      );
+                    }),
                     const SizedBox(height: 15),
 
-                    const Row(
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          '47 Reviews',
+                          '${product['reviewCount']} Reviews',
                           style: TextStyle(
                             color: Colors.grey,
                             fontSize: 10,
                           ),
                         ),
+
                         Row(
                           children: [
                             Text(
@@ -385,27 +452,20 @@ class ProductPage extends StatelessWidget {
 
                     const SizedBox(height: 25),
 
-                    // Jennifer
-                    const _ReviewItem(
-                      image: 'assets/images/jennifer.png',
-                      name: 'Jennifer Rose',
-                      time: '5m ago',
-                      review:
-                      'I love it. Awesome customer service! Helped me out '
-                          'with adding an additional item to my order. Thanks again!',
-                    ),
-
-                    const SizedBox(height: 25),
-
-                    // Kelly
-                    const _ReviewItem(
-                      image: 'assets/images/kelly.png',
-                      name: 'Kelly Rihana',
-                      time: '9m ago',
-                      review:
-                      'I\'m very happy with order, it was delivered on '
-                          'and good quality. Recommended!',
-                    ),
+                    // Jennifer kelly
+                    ...(product['reviews'] as List).map((review) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 25),
+                        child: _ReviewItem(
+                          image: review['id'] == 'r001'
+                              ? 'assets/images/jennifer.png'
+                              : 'assets/images/kelly.png',
+                          name: review['author'] as String,
+                          time: review['createdAtLabel'] as String,
+                          review: review['text'] as String,
+                        ),
+                      );
+                    }),
 
                     const SizedBox(height: 25),
                     const Divider(),
@@ -422,23 +482,14 @@ class ProductPage extends StatelessWidget {
                       height: 220,
                       child: ListView(
                         scrollDirection: Axis.horizontal,
-                        children: const [
-                          _SimilarProduct(
-                            image: 'assets/images/Frame 33119.png',
-                            name: 'Rise Crop Hoodie',
-                            price: '\$ 43.00',
-                          ),
-                          _SimilarProduct(
-                            image: 'assets/images/Frame 33118.png',
-                            name: 'Gym Crop Top',
-                            price: '\$ 39.99',
-                          ),
-                          _SimilarProduct(
-                            image: 'assets/images/Frame 33120.png',
-                            name: 'Sport Sweatshirt',
-                            price: '\$ 47.99',
-                          ),
-                        ],
+                        children: (product['similarProducts'] as List).map((item) {
+                          return _SimilarProduct(
+                            image: item['imageUrl'] as String,
+                            name: item['name'] as String,
+                            price: '\$ ${(item['price'] as num).toStringAsFixed(2)}',
+                          );
+                        }).toList(),
+
                       ),
                     ),
 
@@ -450,10 +501,11 @@ class ProductPage extends StatelessWidget {
           ),
         ),
       ),
-    );
+);
+},
+);
   }
 }
-
 // ========================================================
 // BUTON ROTUND - BACK / FAVORITE
 // ========================================================
@@ -493,10 +545,13 @@ class _CircleButton extends StatelessWidget {
 
 class _ColorCircle extends StatelessWidget {
   final Color color;
+  final bool selected;
 
   const _ColorCircle({
     required this.color,
+    this.selected = false,
   });
+
 
   @override
   Widget build(BuildContext context) {
@@ -507,8 +562,10 @@ class _ColorCircle extends StatelessWidget {
         color: color,
         shape: BoxShape.circle,
         border: Border.all(
-          color: Colors.white,
-          width: 2,
+          color: selected
+              ? const Color(0xFF4D9B88)
+              : Colors.white,
+          width: selected ? 3 : 2,
         ),
         boxShadow: const [
           BoxShadow(
@@ -528,11 +585,14 @@ class _ColorCircle extends StatelessWidget {
 class _SizeCircle extends StatelessWidget {
   final String text;
   final bool selected;
+  final bool available;
 
   const _SizeCircle({
     required this.text,
     this.selected = false,
+    this.available = true,
   });
+
 
   @override
   Widget build(BuildContext context) {
@@ -550,7 +610,11 @@ class _SizeCircle extends StatelessWidget {
         text,
         style: TextStyle(
           fontSize: 11,
-          color: selected ? Colors.white : Colors.grey,
+          color: !available
+              ? Colors.grey.shade300
+              : selected
+              ? Colors.white
+              : Colors.grey,
         ),
       ),
     );
@@ -759,11 +823,18 @@ class _SimilarProduct extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: Image.asset(
+            child: Image.network(
               image,
               width: 130,
               height: 160,
               fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(
+                  Icons.broken_image_outlined,
+                  size: 40,
+                  color: Colors.grey,
+                );
+              },
             ),
           ),
           const SizedBox(height: 7),

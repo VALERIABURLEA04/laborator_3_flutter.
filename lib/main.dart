@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
 import 'product_page.dart'; //spre pagina 2//
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+import 'cubits/home/home_cubit.dart';
+import 'cubits/home/home_state.dart';
+import 'widgets/loading_widget.dart';
+import 'widgets/empty_widget.dart';
+import 'widgets/error_widget.dart' as store_error;
+import 'widgets/category_item.dart';
+
 
 void main() {
   runApp(const GemStoreApp());
 }
 
-class GemStoreApp extends StatelessWidget {
+class GemStoreApp extends StatelessWidget { //configurare aplicatie
   const GemStoreApp({super.key});
 
   @override
@@ -17,7 +26,12 @@ class GemStoreApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
         fontFamily: 'Arial',
       ),
-      home: const HomePage(),
+//schimbari //
+        home: BlocProvider(
+          create: (context) => HomeCubit()..loadProducts(),
+          child: const HomePage(),
+        ),
+
     );
   }
 }
@@ -27,12 +41,61 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+return BlocBuilder<HomeCubit, HomeState>(
+builder: (context, state) {
+if (state is HomeLoading || state is HomeInitial) {
+return const Scaffold(
+body: LoadingWidget(),
+);
+}
+
+if (state is HomeEmpty) {
+return const Scaffold(
+body: EmptyWidget(),
+);
+}
+
+if (state is HomeError) {
+return Scaffold(
+body: store_error.ErrorWidget(message: state.message),
+);
+}
+
+//adaugare
+if (state is! HomeSuccess) {
+  return const Scaffold(
+    body: LoadingWidget(),
+  );
+}
+
+  final products = state.filteredProducts;
+
+return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+
+
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                child: TextField(
+                  onChanged: (value) {
+                    context.read<HomeCubit>().searchProducts(value);
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search products...',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
 
               // Bara de sus
               Padding(
@@ -74,98 +137,256 @@ class HomePage extends StatelessWidget {
                 ),
               ),
 
-              // Categorii
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24),
+
+// Categorii
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    CategoryItem(
-                      icon: Icons.female,
-                      title: 'Women',
-                      selected: true,
-                    ),
-                    CategoryItem(
-                      icon: Icons.male,
-                      title: 'Men',
-                    ),
-                    CategoryItem(
-                      icon: Icons.directions_bike,
-                      title: 'Accessories',
-                    ),
-                    CategoryItem(
-                      icon: Icons.brush_outlined,
-                      title: 'Beauty',
-                    ),
-                  ],
+                  children: state.storeData.categories.map((category) {
+                    IconData categoryIcon;
+
+                    switch (category.id) {
+                      case 'women':
+                        categoryIcon = Icons.female;
+                        break;
+                      case 'men':
+                        categoryIcon = Icons.male;
+                        break;
+                      case 'accessories':
+                        categoryIcon = Icons.directions_bike;
+                        break;
+                      case 'beauty':
+                        categoryIcon = Icons.brush_outlined;
+                        break;
+                      default:
+                        categoryIcon = Icons.category_outlined;
+                    }
+
+                    return CategoryItem(
+                      icon: categoryIcon,
+                      title: category.name,
+                      selected: state.selectedCategory == category.id,
+                      onTap: () {
+                        context.read<HomeCubit>().filterByCategory(category.id);
+                      },
+                    );
+                  }).toList(),
                 ),
               ),
 
+
               const SizedBox(height: 25),
+
+
 
               // Autumn Collection
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(14),
-                  child: Image.asset(
-                    'assets/images/autumn_collection1.png',
-                    width: double.infinity,
-                    fit: BoxFit.cover,
+                  child: Stack(
+                    children: [
+                      Image.network(
+                        state.storeData.heroBannerImageUrl,
+                        width: double.infinity,
+                        height: 200,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) {
+                            return child;
+                          }
+                          return const SizedBox(
+                            height: 200,
+                            child: Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Image.asset(
+                            'assets/images/autumn_collection1.png',
+                            width: double.infinity,
+                            height: 200,
+                            fit: BoxFit.cover,
+                          );
+                        },
+                      ),
+                      Positioned(
+                        left: 20,
+                        bottom: 20,
+                        right: 20,
+                        child: Text(
+                          state.storeData.heroBannerTitle,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black54,
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
 
-              const SizedBox(height: 25),
+
+              const SizedBox(height: 25),//pt spatiu
 
               // Feature Products
               // Feature Products
               const SectionTitle(title: 'Feature Products'),
 
-              const SizedBox(height: 15),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 8,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    const Icon(Icons.sort, size: 20),
+                    const SizedBox(width: 8),
+                    PopupMenuButton<String>(
+                      tooltip: 'Sort products',
+                      onSelected: (value) {
+                        context.read<HomeCubit>().sortProducts(value);
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'priceAsc',
+                          child: Text('Price: Low to High'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'priceDesc',
+                          child: Text('Price: High to Low'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'name',
+                          child: Text('Name: A-Z'),
+                        ),
+                      ],
+                      child: const Text('Sort by'),
+                    ),
+                  ],
+                ),
+              ),
 
+
+              const SizedBox(height: 15),
+//in caz ca nu sunt produse
+              if (products.isEmpty)
+                const SizedBox(
+                  height: 235,
+                  child: EmptyWidget(),
+                )
+              else
               SizedBox(
                 height: 235,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.only(left: 24),
-                  children: [
-                    const ProductCard(
-                      image: 'assets/images/feature _1.png',
-                      name: 'Turtleneck Sweater',
-                      price: '\$ 39.99',
-                    ),
+//citire din json
+                  children: products.take(3).map((product) {
 
-                    const ProductCard(
-                      image: 'assets/images/feature_2.png',
-                      name: 'Long Sleeve Dress',
-                      price: '\$ 45.00',
-                    ),
 
-                    ProductCard(
-                      image: 'assets/images/feature_3.png',
-                      name: 'Sportswear Set',
-                      price: '\$ 80.00',
-                      onTap: () {
+                    return ProductCard(
+                      image: product.imageUrl,
+                      name: product.name,
+                      price: '\$ ${product.price.toStringAsFixed(2)}',
+                      isFavorite: state.favoriteIds.contains(product.id),
+                      onFavoriteTap: () {
+                        context.read<HomeCubit>().toggleFavorite(product.id);
+                      },
+                      onTap: product.id == 'p003'
+                          ? () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => const ProductPage(),
                           ),
                         );
-                      },
-                    ),
-                  ], // închide children
+                      }
+                          : null,
+                    );
+                  }).toList(),
+
                 ),   // închide ListView
               ),     // închide SizedBox
 
               const SizedBox(height: 10),
 
+
               // Hang Out & Party
-              Image.asset(
-                'assets/images/hang_out_party_3.png',
-                width: double.infinity,
-                fit: BoxFit.cover,
+              Stack(
+                children: [
+                  Image.network(
+                    state.storeData.newCollectionImageUrl,
+                    width: double.infinity,
+                    height: 230,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) {
+                        return child;
+                      }
+
+                      return const SizedBox(
+                        height: 230,
+                        child: Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Image.asset(
+                        'assets/images/hang_out_party_3.png',
+                        width: double.infinity,
+                        height: 230,
+                        fit: BoxFit.cover,
+                      );
+                    },
+                  ),
+                  Positioned(
+                    left: 24,
+                    bottom: 24,
+                    right: 24,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          state.storeData.newCollectionLabel,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          state.storeData.newCollectionTitle,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black54,
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 25),
@@ -207,69 +428,164 @@ class HomePage extends StatelessWidget {
 
               const SizedBox(height: 15),
 
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Image.asset(
-                  'assets/images/frame_33170last.png',
-                  width: double.infinity,
-                  fit: BoxFit.fitWidth,
-                ),
+
+              Column(
+                children: state.storeData.topCollections.map((collection) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 8,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        children: [
+                          Image.network(
+                            collection['imageUrl'] as String,
+                            width: double.infinity,
+                            height: 200,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Image.asset(
+                                'assets/images/frame_33170last.png',
+                                width: double.infinity,
+                                height: 200,
+                                fit: BoxFit.cover,
+                              );
+                            },
+                          ),
+                          Positioned(
+                            left: 20,
+                            bottom: 20,
+                            right: 20,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  collection['label'] as String,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  collection['title'] as String,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    shadows: [
+                                      Shadow(
+                                        color: Colors.black54,
+                                        blurRadius: 6,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
 
               const SizedBox(height: 30),
+
+
+// Category Promos
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Category Promos',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+
+              Column(
+                children: state.storeData.categoryPromos.map((promo) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 8,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        children: [
+                          Image.network(
+                            promo['imageUrl'] as String,
+                            width: double.infinity,
+                            height: 180,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return const SizedBox(
+                                height: 180,
+                                child: Center(
+                                  child: Icon(Icons.broken_image_outlined),
+                                ),
+                              );
+                            },
+                          ),
+                          Positioned(
+                            left: 20,
+                            bottom: 20,
+                            right: 20,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  promo['category'] as String,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  promo['title'] as String,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    shadows: [
+                                      Shadow(
+                                        color: Colors.black54,
+                                        blurRadius: 6,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+
             ],
           ),
         ),
       ),
-    );
+);
+},
+);
   }
 }
 
 
-//4 cercuri cu categorii de sus.//
-class CategoryItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final bool selected;
-
-  const CategoryItem({
-    super.key,
-    required this.icon,
-    required this.title,
-    this.selected = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: selected
-                ? const Color(0xFF3A332E)
-                : const Color(0xFFF5F5F5),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            icon,
-            size: 22,
-            color: selected ? Colors.white : Colors.grey,
-          ),
-        ),
-        const SizedBox(height: 7),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 11,
-            color: selected ? Colors.black87 : Colors.grey,
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 
 ///sectionTitle //
@@ -308,63 +624,123 @@ class SectionTitle extends StatelessWidget {
   }
 }
 
-//featureProducts//
+
+
 class ProductCard extends StatelessWidget {
   final String image;
   final String name;
   final String price;
-  //// Funcție opțională care se execută la apăsarea pe produs
   final VoidCallback? onTap;
+  final bool isFavorite;
+  final VoidCallback? onFavoriteTap;
 
   const ProductCard({
     super.key,
     required this.image,
     required this.name,
     required this.price,
-    //
     this.onTap,
+    this.isFavorite = false,
+    this.onFavoriteTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    //
     return GestureDetector(
-        onTap: onTap,
-        child: Container(
-      width: 140,
-      margin: const EdgeInsets.only(right: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.asset(
-              image,
-              width: 140,
-              height: 175,
-              fit: BoxFit.cover,
+      onTap: onTap,
+      child: Container(
+        width: 140,
+        margin: const EdgeInsets.only(right: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+
+            // Imaginea produsului + Favorite
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    image,
+                    width: 140,
+                    height: 175,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) {
+                        return child;
+                      }
+
+                      return const SizedBox(
+                        width: 140,
+                        height: 175,
+                        child: Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return const SizedBox(
+                        width: 140,
+                        height: 175,
+                        child: Icon(
+                          Icons.broken_image,
+                          color: Colors.grey,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // Inimioara din coltul imaginii
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: GestureDetector(
+                    onTap: onFavoriteTap,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isFavorite
+                            ? Icons.favorite
+                            : Icons.favorite_border,
+                        color: isFavorite
+                            ? Colors.red
+                            : Colors.grey,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12,
+
+            const SizedBox(height: 8),
+
+            // Denumirea produsului
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            price,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
+
+            const SizedBox(height: 4),
+
+            // Pretul produsului
+            Text(
+              price,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 }
